@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mark In Visit</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        :root { --tbl-zoom: 0.875rem; }
+        body { font-family: 'Inter', sans-serif; background-color: #313338; color: #dbdee1; }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #2b2d31; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #1a1b1e; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #111214; }
+
+        /* Card Styles */
+        .team-card {
+            background-color: #2b2d31; border: 1px solid #1e1f22; border-radius: 8px;
+            transition: all 0.2s ease; cursor: pointer;
+        }
+        .team-card:hover { background-color: #35373c; transform: translateY(-2px); border-color: #5865F2; }
+
+        /* Table Styles */
+        .table-container { overflow-x: auto; max-width: 100%; border-radius: 8px; background-color: #2b2d31; }
+        table { border-collapse: collapse; width: 100%; font-size: var(--tbl-zoom); transition: font-size 0.2s ease; }
+        th, td { border-bottom: 1px solid #1e1f22; padding: calc(var(--tbl-zoom) * 0.75); text-align: center; white-space: nowrap; }
+        th { background-color: #1e1f22; font-weight: 600; color: #b5bac1; position: sticky; top: 0; z-index: 10; text-transform: uppercase; font-size: calc(var(--tbl-zoom) * 0.85); }
+        tr { transition: background-color 0.1s ease; }
+        tr:hover { background-color: #35373c; } 
+        
+        .text-left-col { text-align: left; min-width: 200px; }
+        .hide-details .detail-col { display: none; }
+        .date-col { min-width: 35px; cursor: pointer; user-select: none; transition: background-color 0.1s; }
+        .date-col:hover { background-color: #404249; }
+        
+        .current-date-col { background-color: #3f4147 !important; } 
+        .current-date-header { color: #f2f3f5; font-weight: bold; border-bottom: 2px solid #5865F2; }
+        .checked-cell i { color: #23a559; font-size: 1.1em; filter: drop-shadow(0 0 2px rgba(35, 165, 89, 0.4)); } 
+        
+        .editable-cell { cursor: text; transition: background-color 0.2s; border-radius: 4px; }
+        .editable-cell:hover { background-color: #1e1f22; outline: 1px dashed #5865F2; outline-offset: -2px; }
+        
+        /* Modals */
+        .modal { display: none; position: fixed; z-index: 50; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); backdrop-filter: blur(2px); }
+        .modal-content { background-color: #313338; margin: 5% auto; padding: 24px; border-radius: 8px; box-shadow: 0 8px 16px rgba(0,0,0,0.24); max-height: 90vh; display: flex; flex-direction: column;}
+        .modal-sm { width: 90%; max-width: 440px; }
+        .modal-full { width: 98%; max-width: 1600px; height: 90vh; }
+        
+        .modal-body-scroll { overflow-y: auto; flex-grow: 1; margin-top: 10px; }
+
+        .discord-input { background-color: #1e1f22; color: #dbdee1; border: none; border-radius: 3px; padding: 10px; width: 100%; outline: none; transition: border-color 0.2s; }
+        .discord-input:focus { outline: 1px solid #000000; }
+        
+        .btn-blurple { background-color: #5865F2; color: white; transition: background-color 0.17s ease; }
+        .btn-blurple:hover { background-color: #4752C4; }
+        .btn-red { background-color: #da373c; color: white; transition: background-color 0.17s ease; }
+        .btn-red:hover { background-color: #a12828; }
+        .btn-green { background-color: #23a559; color: white; transition: background-color 0.17s ease; }
+        .btn-green:hover { background-color: #1a7c43; }
+    </style>
+</head>
+<body class="antialiased min-h-screen flex flex-col">
+
+    <header class="flex justify-between items-center bg-[#1e1f22] p-4 border-b border-[#111214] shadow-sm sticky top-0 z-40">
+        <div class="flex items-center gap-3">
+            <div class="bg-[#5865F2] text-white p-2 rounded-lg shadow-lg">
+                <i class="fas fa-chart-bar text-xl"></i>
+            </div>
+            <h1 id="main-title" class="text-xl font-bold text-[#f2f3f5]">Mark In Visit</h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="flex items-center bg-[#2b2d31] rounded-[4px] border border-[#1e1f22] overflow-hidden">
+                <button onclick="changeZoom(-0.1)" class="p-2 text-[#b5bac1] hover:text-white hover:bg-[#404249] transition" title="Zoom Out"><i class="fas fa-search-minus"></i></button>
+                <div class="w-[1px] h-4 bg-[#3f4147]"></div>
+                <button onclick="changeZoom(0.1)" class="p-2 text-[#b5bac1] hover:text-white hover:bg-[#404249] transition" title="Zoom In"><i class="fas fa-search-plus"></i></button>
+            </div>
+
+            <div id="auth-section">
+                <button id="login-btn" class="btn-blurple px-5 py-2 rounded-[3px] text-sm font-medium shadow">Login</button>
+                <div id="user-info" class="hidden flex items-center gap-4 bg-[#2b2d31] py-1 px-3 rounded-[4px] border border-[#1e1f22]">
+                    <div class="w-2 h-2 rounded-full bg-[#23a559]"></div>
+                    <span id="role-display" class="font-semibold text-[#f2f3f5] text-sm"></span>
+                    <div class="h-4 w-[1px] bg-[#3f4147] mx-1"></div>
+                    <button id="logout-btn" class="text-[#b5bac1] hover:text-[#f2f3f5] transition-colors p-1" title="Logout"><i class="fas fa-sign-out-alt"></i></button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container mx-auto p-4 flex-grow flex flex-col gap-6 mt-4 max-w-6xl">
+        
+        <div id="super-admin-controls" class="hidden bg-[#2b2d31] p-6 rounded-lg shadow-md border border-[#1e1f22]">
+            <h2 class="text-xl font-bold text-[#f2f3f5] uppercase tracking-wide text-sm mb-4 border-b border-[#3f4147] pb-2">Super Admin Controls</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div class="bg-[#1e1f22] p-4 rounded-[4px]">
+                    <label class="block text-xs font-bold text-[#b5bac1] uppercase mb-2">Edit App Title</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="edit-title-input" class="discord-input" placeholder="Mark In Visit">
+                        <button id="save-title-btn" class="btn-green px-4 py-2 rounded-[3px] font-medium text-sm whitespace-nowrap">Save</button>
+                    </div>
+                </div>
+
+                <div class="bg-[#1e1f22] p-4 rounded-[4px]">
+                    <label class="block text-xs font-bold text-[#b5bac1] uppercase mb-2">Change Super Admin Password</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="new-admin-pwd-input" class="discord-input" placeholder="New Password">
+                        <button id="save-admin-pwd-btn" class="btn-blurple px-4 py-2 rounded-[3px] font-medium text-sm whitespace-nowrap">Update</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-[#1e1f22] p-4 rounded-[4px] mb-6 border border-[#f0b232] border-opacity-30">
+                <label class="block text-xs font-bold text-[#f0b232] uppercase mb-2"><i class="fas fa-upload mr-1"></i> Bulk Import Data</label>
+                <p class="text-xs text-[#b5bac1] mb-2">Format: <code>Cluster Name:PIC AE</code> (Setiap baris enter untuk data baru)</p>
+                <textarea id="import-data-text" class="discord-input mb-3 h-24 text-sm font-mono" placeholder="NGRONGGO RW 005 KOTA:PUTRI SHALLU&#10;SINGONEGARAN RW 07:REINO ARGA..."></textarea>
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <select id="import-team-target" class="discord-input sm:w-1/2 cursor-pointer text-sm">
+                        <option value="">-- Pilih Tim Tujuan --</option>
+                    </select>
+                    <button id="run-import-btn" class="bg-[#f0b232] hover:bg-[#d49924] text-gray-900 px-6 py-2 rounded-[3px] font-bold text-sm shadow transition w-full sm:w-auto">
+                        Jalankan Import
+                    </button>
+                </div>
+            </div>
+
+            <div class="border-t border-[#3f4147] pt-6">
+                <h3 class="text-xs font-bold text-[#b5bac1] uppercase mb-4">Team Management</h3>
+                <div class="bg-[#1e1f22] p-4 rounded-[4px] mb-4 flex flex-col md:flex-row gap-3">
+                    <div class="flex-grow">
+                        <label class="block text-xs text-[#b5bac1] font-semibold mb-1">Team Name</label>
+                        <input type="text" id="new-team-name" class="discord-input py-2">
+                    </div>
+                    <div class="flex-grow">
+                        <label class="block text-xs text-[#b5bac1] font-semibold mb-1">Sub-Admin Password</label>
+                        <input type="text" id="new-team-pwd" class="discord-input py-2">
+                    </div>
+                    <div class="flex items-end">
+                        <button id="add-team-btn" class="btn-blurple px-6 py-2 rounded-[3px] font-medium w-full md:w-auto h-[36px]">Add Team</button>
+                    </div>
+                </div>
+                <div id="team-management-list" class="space-y-2 mt-4"></div>
+            </div>
+        </div>
+
+        <main id="app-content" class="pb-10">
+            <div class="flex flex-col items-center justify-center py-20 gap-4" id="loading-indicator">
+                <div class="w-10 h-10 border-4 border-[#3f4147] border-t-[#5865F2] rounded-full animate-spin"></div>
+                <div class="text-[#b5bac1] font-medium tracking-wide animate-pulse">CONNECTING...</div>
+            </div>
+            <!-- Team Cards Grid -->
+            <div id="team-cards-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 hidden">
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <!-- Full Table Modal -->
+    <div id="full-table-modal" class="modal">
+        <div class="modal-content modal-full">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2 pb-3 border-b border-[#1e1f22]">
+                <div class="flex items-center gap-3">
+                    <button class="close-modal text-[#87898c] hover:text-[#f2f3f5] transition"><i class="fas fa-arrow-left text-xl"></i></button>
+                    <h2 id="modal-team-title" class="text-xl font-bold text-[#f2f3f5]">Team Name</h2>
+                    
+                    <!-- Month Selector -->
+                    <select id="month-selector" class="bg-[#1e1f22] text-[#f2f3f5] text-sm font-semibold border border-[#3f4147] rounded px-3 py-1.5 ml-2 cursor-pointer outline-none">
+                        <!-- Injected by JS -->
+                    </select>
+                </div>
+                <div class="flex gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0" id="modal-actions-container">
+                    <button onclick="toggleDetails()" class="bg-[#3f4147] hover:bg-[#4e5058] text-[#dbdee1] px-3 py-1.5 rounded-[3px] text-xs font-bold transition flex items-center gap-1 whitespace-nowrap">
+                        <i class="fas fa-eye-slash"></i> Info Kolom
+                    </button>
+                    <button onclick="captureTable()" class="btn-blurple px-3 py-1.5 rounded-[3px] text-xs font-bold flex items-center gap-1 shadow-sm whitespace-nowrap">
+                        <i class="fas fa-camera"></i> Capture
+                    </button>
+                    <button id="modal-add-row-btn" class="btn-green px-3 py-1.5 rounded-[3px] text-xs font-bold uppercase hidden items-center gap-1 shadow-sm ml-2 whitespace-nowrap">
+                        <i class="fas fa-plus"></i> Row
+                    </button>
+                </div>
+            </div>
+            
+            <div class="modal-body-scroll relative" id="modal-capture-area">
+                <div class="table-container w-full min-w-max relative z-0" id="active-table-container">
+                    <table id="active-table">
+                        <thead id="active-thead"></thead>
+                        <tbody id="active-tbody">
+                             <tr><td colspan="34" class="py-10 text-[#87898c] animate-pulse">Loading data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal">
+        <div class="modal-content modal-sm relative">
+            <button class="close-modal absolute top-4 right-4 text-[#87898c] hover:text-[#dbdee1] transition"><i class="fas fa-times text-xl"></i></button>
+            <div class="text-center mb-6">
+                <h2 class="text-2xl font-bold text-[#f2f3f5] mb-2">Welcome Back!</h2>
+            </div>
+            <div class="mb-6">
+                <label class="block text-xs font-bold text-[#b5bac1] uppercase mb-2">Password <span class="text-[#da373c]">*</span></label>
+                <input type="password" id="login-password" class="discord-input" placeholder="Enter password">
+                <p id="login-error" class="text-[#da373c] text-xs mt-2 italic hidden">Invalid password.</p>
+            </div>
+            <button id="submit-login" class="btn-blurple w-full p-3 rounded-[3px] font-semibold">Log In</button>
+        </div>
+    </div>
+
+    <!-- Edit Team Modal -->
+    <div id="edit-team-modal" class="modal">
+        <div class="modal-content modal-sm relative">
+            <button class="close-modal absolute top-4 right-4 text-[#87898c] hover:text-[#dbdee1] transition"><i class="fas fa-times text-xl"></i></button>
+            <h2 class="text-xl font-bold text-[#f2f3f5] mb-6 uppercase text-sm tracking-wide">Edit Team</h2>
+            <input type="hidden" id="edit-team-id">
+            <div class="mb-4">
+                <label class="block text-xs font-bold text-[#b5bac1] uppercase mb-2">Team Name</label>
+                <input type="text" id="edit-team-name-input" class="discord-input">
+            </div>
+            <div class="mb-6">
+                <label class="block text-xs font-bold text-[#b5bac1] uppercase mb-2">Password</label>
+                <input type="text" id="edit-team-pwd-input" class="discord-input">
+            </div>
+            <button id="save-team-edits-btn" class="btn-blurple w-full py-2 rounded-[3px] font-medium">Save</button>
+        </div>
+    </div>
+
+    <!-- Custom Dialog -->
+    <div id="dialog-modal" class="modal z-[60]">
+        <div class="modal-content modal-sm relative p-0 overflow-hidden">
+            <div class="p-6">
+                <h2 id="dialog-title" class="text-xl font-bold text-[#f2f3f5] mb-3">Notice</h2>
+                <p id="dialog-message" class="text-[#dbdee1] text-[15px] whitespace-pre-line"></p>
+            </div>
+            <div class="flex gap-3 justify-end bg-[#2b2d31] p-4 mt-2 border-t border-[#1e1f22]">
+                <button id="dialog-cancel" class="text-[#f2f3f5] hover:underline px-4 py-2 text-sm hidden">Cancel</button>
+                <button id="dialog-confirm" class="btn-blurple px-6 py-2 rounded-[3px] font-medium text-sm">Okay</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-analytics.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBP5gLmOuZpep80lAG7k_xKUP21whg7zEc",
+            authDomain: "markin-3e7b2.firebaseapp.com",
+            projectId: "markin-3e7b2",
+            storageBucket: "markin-3e7b2.firebasestorage.app",
+            messagingSenderId: "450152130687",
+            appId: "1:450152130687:web:5564ebd5cebd6128b5374a",
+            measurementId: "G-9CL0RB9085"
+        };
+        const DB_BASE = 'markin_data'; 
+        
+        let app, db, auth;
+        let currentUserRole = 'viewer';
+        let currentTeams = {}; 
+        let realSuperAdminPwd = 'user1234'; 
+        
+        // Modal State
+        let activeTeamId = null;
+        let activePeriod = ""; 
+        let activeRowsUnsubscribe = null;
+
+        // Custom Dialogs
+        function showDialog(title, msg, isConfirm = false, onConfirm = null) {
+            document.getElementById('dialog-title').innerText = title;
+            document.getElementById('dialog-message').innerText = msg;
+            const dialog = document.getElementById('dialog-modal');
+            const cancelBtn = document.getElementById('dialog-cancel');
+            const confirmBtn = document.getElementById('dialog-confirm');
+            
+            dialog.style.display = 'block';
+            cancelBtn.style.display = isConfirm ? 'block' : 'none';
+            confirmBtn.className = isConfirm ? 'btn-red px-6 py-2 rounded-[3px] font-medium text-sm' : 'btn-blurple px-6 py-2 rounded-[3px] font-medium text-sm';
+
+            confirmBtn.onclick = () => { dialog.style.display = 'none'; if(onConfirm) onConfirm(); };
+            cancelBtn.onclick = () => dialog.style.display = 'none';
+        }
+        window.discordAlert = (msg) => showDialog("Notice", msg, false);
+        window.discordConfirm = (title, msg, onConfirm) => showDialog(title, msg, true, onConfirm);
+
+        // Zoom Logic
+        let zoomLevel = 0.875;
+        window.changeZoom = (delta) => {
+            zoomLevel = Math.max(0.6, Math.min(1.5, zoomLevel + delta));
+            document.documentElement.style.setProperty('--tbl-zoom', `${zoomLevel}rem`);
+        };
+
+        // Time / Period Logic (e.g. "2026_09")
+        function getRealtimePeriod() {
+            const d = new Date();
+            let month = d.getMonth() + 1;
+            return `${d.getFullYear()}_${month < 10 ? '0'+month : month}`;
+        }
+        
+        function formatPeriodString(periodStr) {
+            const [y, m] = periodStr.split('_');
+            const date = new Date(y, parseInt(m)-1, 1);
+            return date.toLocaleString('default', { month: 'long', year: 'numeric' });
+        }
+
+        function populateMonthDropdown() {
+            const select = document.getElementById('month-selector');
+            select.innerHTML = '';
+            const currentRealPeriod = getRealtimePeriod();
+            activePeriod = activePeriod || currentRealPeriod;
+
+            const d = new Date();
+            for(let i = 0; i < 12; i++) {
+                let y = d.getFullYear();
+                let m = d.getMonth() + 1;
+                let val = `${y}_${m < 10 ? '0'+m : m}`;
+                
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.innerText = formatPeriodString(val);
+                if(val === activePeriod) opt.selected = true;
+                select.appendChild(opt);
+                
+                d.setMonth(d.getMonth() - 1); // go back 1 month
+            }
+            
+            select.onchange = (e) => {
+                activePeriod = e.target.value;
+                if(activeTeamId) loadActiveTable();
+            };
+        }
+
+        async function initFirebase() {
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                getAnalytics(app);
+                await signInAnonymously(auth);
+                setupDataListeners();
+                populateMonthDropdown();
+            } catch (error) {
+                console.error(error);
+                document.getElementById('loading-indicator').innerHTML = `<div class="text-[#da373c] font-bold">Connection Failed. Check Firebase Rules.</div>`;
+            }
+        }
+
+        function getCollectionPath(colName) { return collection(db, DB_BASE, 'main', colName); }
+        function getDocPath(colName, docId) { return doc(db, DB_BASE, 'main', colName, docId); }
+
+        function setupDataListeners() {
+            if (!auth.currentUser) return;
+            const errHandler = (e) => {
+                console.error(e);
+                if(e.code === 'permission-denied') discordAlert("Database Permission Denied. Please update Firestore rules.");
+            };
+
+            onSnapshot(getDocPath('config', 'settings'), (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    document.getElementById('main-title').innerText = data.title || "Mark In Visit";
+                    document.title = data.title || "Mark In Visit";
+                    if(data.superAdminPwd) realSuperAdminPwd = data.superAdminPwd;
+                    if(currentUserRole === 'superadmin') document.getElementById('edit-title-input').value = data.title || "";
+                } else {
+                    setDoc(getDocPath('config', 'settings'), { title: "Mark In Visit", superAdminPwd: "user1234" }).catch(errHandler);
+                }
+            }, errHandler);
+
+            onSnapshot(getCollectionPath('teams'), (snapshot) => {
+                document.getElementById('loading-indicator').style.display = 'none';
+                document.getElementById('team-cards-grid').classList.remove('hidden');
+                
+                const newTeams = {};
+                snapshot.forEach(doc => { newTeams[doc.id] = { id: doc.id, ...doc.data() }; });
+                
+                if (currentUserRole !== 'viewer' && currentUserRole !== 'superadmin' && !newTeams[currentUserRole]) {
+                    handleLogout(); discordAlert("Tim Anda telah dihapus oleh Admin.");
+                }
+                currentTeams = newTeams;
+                renderHomeGrid();
+                if(currentUserRole === 'superadmin') renderSuperAdminTeamList();
+            }, errHandler);
+        }
+
+        // --- HOME GRID VIEW ---
+        function renderHomeGrid() {
+            const grid = document.getElementById('team-cards-grid');
+            grid.innerHTML = '';
+            const teamIds = Object.keys(currentTeams).sort((a,b) => currentTeams[a].createdAt - currentTeams[b].createdAt);
+            
+            if (teamIds.length === 0) {
+                grid.innerHTML = `<div class="col-span-full text-center text-[#b5bac1] py-10">Belum ada tim.</div>`;
+                return;
+            }
+
+            teamIds.forEach(teamId => {
+                if (currentUserRole !== 'viewer' && currentUserRole !== 'superadmin' && currentUserRole !== teamId) return; 
+
+                const team = currentTeams[teamId];
+                const card = document.createElement('div');
+                card.className = 'team-card group';
+                card.onclick = () => openTeamModal(teamId);
+                card.innerHTML = `
+                    <div class="p-5 flex flex-col h-full justify-center items-center text-center gap-3">
+                        <div class="w-14 h-14 bg-[#1e1f22] rounded-full flex items-center justify-center border-2 border-[#3f4147] group-hover:border-[#5865F2] transition">
+                            <i class="fas fa-users text-[#b5bac1] group-hover:text-[#5865F2] text-2xl transition"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-[#f2f3f5] group-hover:text-white transition">${escapeHtml(team.name)}</h3>
+                        <div class="text-xs font-semibold text-[#87898c] bg-[#1e1f22] px-3 py-1 rounded-full uppercase tracking-wider group-hover:bg-[#5865F2] group-hover:text-white transition">Buka Tabel</div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // --- FULL TABLE MODAL LOGIC ---
+        window.openTeamModal = (teamId) => {
+            activeTeamId = teamId;
+            activePeriod = document.getElementById('month-selector').value || getRealtimePeriod();
+            document.getElementById('modal-team-title').innerText = currentTeams[teamId].name;
+            
+            const addRowBtn = document.getElementById('modal-add-row-btn');
+            if(currentUserRole === 'superadmin') {
+                addRowBtn.style.display = 'flex';
+                addRowBtn.onclick = () => addNewRow(teamId);
+            } else {
+                addRowBtn.style.display = 'none';
+            }
+
+            document.getElementById('active-table').classList.remove('hide-details'); // Reset info toggle
+            document.getElementById('full-table-modal').style.display = 'block';
+            loadActiveTable();
+        };
+
+        function closeTeamModal() {
+            document.getElementById('full-table-modal').style.display = 'none';
+            activeTeamId = null;
+            if(activeRowsUnsubscribe) {
+                activeRowsUnsubscribe();
+                activeRowsUnsubscribe = null;
+            }
+        }
+
+        function generateActiveHeader() {
+            let html = '<tr>';
+            html += '<th class="text-left-col detail-col sticky left-0 z-20 shadow-[1px_0_0_#1e1f22]">Cluster Name</th>';
+            html += '<th class="text-left-col detail-col">PIC AE</th>';
+            
+            const d = new Date();
+            const isViewingCurrentRealMonth = activePeriod === getRealtimePeriod();
+            const currentDay = d.getDate();
+            
+            for (let i = 1; i <= 31; i++) {
+                const bgClass = (isViewingCurrentRealMonth && i === currentDay) ? 'current-date-header' : '';
+                html += `<th class="${bgClass}">${i}</th>`;
+            }
+            html += '<th class="text-white">Total</th>';
+            if (currentUserRole === 'superadmin') html += '<th><i class="fas fa-cog"></i></th>';
+            html += '</tr>';
+            return html;
+        }
+
+        function loadActiveTable() {
+            if(!activeTeamId) return;
+            if(activeRowsUnsubscribe) activeRowsUnsubscribe();
+            
+            document.getElementById('active-thead').innerHTML = generateActiveHeader();
+            const tbody = document.getElementById('active-tbody');
+            tbody.innerHTML = '<tr><td colspan="34" class="py-10 text-[#87898c] animate-pulse">Loading data...</td></tr>';
+
+            activeRowsUnsubscribe = onSnapshot(getCollectionPath(`teams/${activeTeamId}/rows`), (snapshot) => {
+                const rowsData = [];
+                snapshot.forEach(doc => rowsData.push({ id: doc.id, ...doc.data() }));
+                rowsData.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+                renderActiveTbody(rowsData);
+            });
+        }
+
+        function renderActiveTbody(rowsData) {
+            const tbody = document.getElementById('active-tbody');
+            tbody.innerHTML = '';
+            
+            const isSuperAdmin = currentUserRole === 'superadmin';
+            const isSubAdmin = currentUserRole === activeTeamId;
+            const isViewingCurrentRealMonth = activePeriod === getRealtimePeriod();
+            const currentDay = new Date().getDate();
+
+            if (rowsData.length === 0) {
+                const cols = 2 + 31 + 1 + (isSuperAdmin ? 1 : 0);
+                tbody.innerHTML = `<tr><td colspan="${cols}" class="text-[#87898c] py-10 italic">Data kosong.</td></tr>`;
+                return;
+            }
+
+            rowsData.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "group";
+                let html = '';
+
+                // Text Cells
+                html += `<td class="text-left-col detail-col text-[#f2f3f5] font-medium sticky left-0 z-10 bg-[#2b2d31] group-hover:bg-[#35373c] shadow-[1px_0_0_#1e1f22] ${isSuperAdmin ? 'editable-cell' : ''}" 
+                             ${isSuperAdmin ? `onclick="editCellText('${activeTeamId}', '${row.id}', 'clusterName', this)"` : ''}>
+                             ${escapeHtml(row.clusterName || '-')}
+                         </td>`;
+                html += `<td class="text-left-col detail-col text-[#dbdee1] ${isSuperAdmin ? 'editable-cell' : ''}"
+                             ${isSuperAdmin ? `onclick="editCellText('${activeTeamId}', '${row.id}', 'picAe', this)"` : ''}>
+                             ${escapeHtml(row.picAe || '-')}
+                         </td>`;
+
+                let totalChecks = 0;
+                
+                // Historical Data Fallback Logic:
+                // Jika periode saat ini adalah bulan aplikasi dibuat dan belum ada 'dates_YYYY_MM', ambil dari 'dates' lama
+                const periodDataKey = `dates_${activePeriod}`;
+                let rowDates = row[periodDataKey];
+                if(rowDates === undefined && isViewingCurrentRealMonth && row.dates) {
+                    rowDates = row.dates; // Backward compatibility with previous app version data
+                } else if(rowDates === undefined) {
+                    rowDates = {}; // Empty month
+                }
+
+                // Dates 1-31
+                for (let i = 1; i <= 31; i++) {
+                    const isChecked = rowDates[i];
+                    if (isChecked) totalChecks++;
+                    
+                    const bgClass = (isViewingCurrentRealMonth && i === currentDay) ? 'current-date-col' : '';
+                    const checkMark = isChecked ? '<i class="fas fa-check"></i>' : '';
+                    const cellClass = `date-col ${bgClass} ${isChecked ? 'checked-cell' : ''}`;
+                    
+                    if (isSubAdmin) {
+                        html += `<td class="${cellClass}" onclick="toggleCheck('${row.id}', ${i}, ${!isChecked})">${checkMark}</td>`;
+                    } else {
+                        html += `<td class="${bgClass} ${isChecked ? 'checked-cell' : ''}">${checkMark}</td>`;
+                    }
+                }
+
+                html += `<td class="font-bold text-[#f2f3f5] bg-[#1e1f22] bg-opacity-40">${totalChecks}</td>`;
+
+                if (isSuperAdmin) {
+                    html += `<td>
+                                <button onclick="deleteRow('${activeTeamId}', '${row.id}')" class="text-[#87898c] hover:text-[#da373c] p-1 transition opacity-0 group-hover:opacity-100 focus:opacity-100"><i class="fas fa-trash"></i></button>
+                             </td>`;
+                }
+
+                tr.innerHTML = html;
+                tbody.appendChild(tr);
+            });
+        }
+
+        window.toggleCheck = async (rowId, dayIndex, newValue) => {
+            if (currentUserRole !== activeTeamId || !auth.currentUser) return; 
+            const periodDataKey = `dates_${activePeriod}`;
+            try {
+                await updateDoc(getDocPath(`teams/${activeTeamId}/rows`, rowId), { [`${periodDataKey}.${dayIndex}`]: newValue });
+            } catch (e) { console.error(e); }
+        };
+
+        window.toggleDetails = () => {
+            const table = document.getElementById(`active-table`);
+            if(table) table.classList.toggle('hide-details');
+        };
+
+        window.captureTable = async () => {
+            const container = document.getElementById('modal-capture-area');
+            const tableContainer = document.getElementById('active-table-container');
+            
+            const oriOverflow = tableContainer.style.overflow;
+            const oriMaxWidth = tableContainer.style.maxWidth;
+            tableContainer.style.overflow = 'visible';
+            tableContainer.style.maxWidth = 'none';
+
+            try {
+                const canvas = await html2canvas(container, { 
+                    backgroundColor: '#313338', scale: 2, 
+                    windowWidth: container.scrollWidth
+                });
+                const link = document.createElement('a');
+                link.download = `MarkIn_${currentTeams[activeTeamId].name}_${activePeriod}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            } catch (err) { discordAlert("Gagal men-capture tabel."); } 
+            finally {
+                tableContainer.style.overflow = oriOverflow;
+                tableContainer.style.maxWidth = oriMaxWidth;
+            }
+        };
+
+        window.editCellText = (teamId, rowId, field, tdElement) => {
+            if (currentUserRole !== 'superadmin') return;
+            const currentText = tdElement.innerText.trim() === '-' ? '' : tdElement.innerText.trim();
+            const input = document.createElement('input');
+            input.type = 'text'; input.value = currentText;
+            input.className = 'w-full bg-[#1e1f22] text-[#f2f3f5] rounded p-1.5 outline-none border border-[#3f4147]';
+            
+            tdElement.innerHTML = ''; tdElement.appendChild(input); input.focus();
+            const saveEdit = async () => {
+                const newVal = input.value.trim();
+                try {
+                    if(newVal !== currentText) await updateDoc(getDocPath(`teams/${teamId}/rows`, rowId), { [field]: newVal });
+                    else tdElement.innerText = currentText || '-';
+                } catch (e) { tdElement.innerText = currentText || '-'; }
+            };
+            input.addEventListener('blur', saveEdit);
+            input.addEventListener('keypress', (e) => { if(e.key === 'Enter') input.blur(); });
+        };
+
+        window.addNewRow = async (teamId) => {
+            if (currentUserRole !== 'superadmin') return;
+            try {
+                await setDoc(doc(getCollectionPath(`teams/${teamId}/rows`)), {
+                    clusterName: "New Cluster", picAe: "New PIC", createdAt: Date.now()
+                });
+            } catch (e) {}
+        };
+        window.deleteRow = async (teamId, rowId) => {
+            if (currentUserRole !== 'superadmin') return;
+            discordConfirm("Delete Row", "Hapus baris ini permanen?", async () => await deleteDoc(getDocPath(`teams/${teamId}/rows`, rowId)));
+        };
+
+        // --- SUPER ADMIN CONTROLS ---
+        function renderSuperAdminTeamList() {
+            const listEl = document.getElementById('team-management-list');
+            const selectEl = document.getElementById('import-team-target');
+            listEl.innerHTML = ''; selectEl.innerHTML = '<option value="">-- Pilih Tim Tujuan --</option>';
+            
+            Object.values(currentTeams).forEach(team => {
+                const div = document.createElement('div');
+                div.className = 'flex justify-between items-center p-3 bg-[#1e1f22] rounded-[4px] border border-[#111214]';
+                div.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="bg-[#2b2d31] p-2 rounded-full"><i class="fas fa-users text-[#b5bac1]"></i></div>
+                        <div>
+                            <div class="font-bold text-[#f2f3f5] text-[15px]">${escapeHtml(team.name)}</div>
+                            <div class="text-xs text-[#87898c] font-mono bg-[#2b2d31] px-1.5 py-0.5 rounded mt-0.5 inline-block border border-[#3f4147]">Pwd: ${escapeHtml(team.password)}</div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="openEditTeamSettingsModal('${team.id}')" class="bg-[#2b2d31] text-[#b5bac1] hover:text-white hover:bg-[#404249] p-2 rounded"><i class="fas fa-edit"></i></button>
+                        <button onclick="deleteTeam('${team.id}')" class="bg-[#2b2d31] text-[#da373c] hover:text-white hover:bg-[#da373c] p-2 rounded"><i class="fas fa-trash"></i></button>
+                    </div>`;
+                listEl.appendChild(div);
+                const opt = document.createElement('option'); opt.value = team.id; opt.innerText = team.name; selectEl.appendChild(opt);
+            });
+        }
+
+        document.getElementById('add-team-btn').onclick = async () => {
+            const nameInput = document.getElementById('new-team-name');
+            const pwdInput = document.getElementById('new-team-pwd');
+            if(!nameInput.value || !pwdInput.value) return discordAlert("Isi Nama Tim dan Password.");
+            const teamId = 'team_' + Date.now();
+            await setDoc(getDocPath('teams', teamId), { name: nameInput.value, password: pwdInput.value, createdAt: Date.now() });
+            nameInput.value = ''; pwdInput.value = '';
+        };
+
+        document.getElementById('run-import-btn').onclick = async () => {
+            const rawText = document.getElementById('import-data-text').value.trim();
+            const teamId = document.getElementById('import-team-target').value;
+            if(!teamId || !rawText) return discordAlert("Pilih tim tujuan dan isi data teks format (Cluster:PIC)");
+
+            const lines = rawText.split('\n');
+            const btn = document.getElementById('run-import-btn');
+            btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            let success = 0;
+            try {
+                const rowsCol = getCollectionPath(`teams/${teamId}/rows`);
+                for(let i=0; i<lines.length; i++) {
+                    const parts = lines[i].split(':');
+                    if(parts.length >= 2) {
+                        await setDoc(doc(rowsCol), { clusterName: parts[0].trim(), picAe: parts[1].trim(), createdAt: Date.now()+i });
+                        success++;
+                    }
+                }
+                discordAlert(`Berhasil import ${success} baris.`);
+                document.getElementById('import-data-text').value = '';
+            } catch(e) { discordAlert("Gagal import data."); } 
+            finally { btn.disabled = false; btn.innerText = 'Jalankan Import'; }
+        };
+
+        window.openEditTeamSettingsModal = (teamId) => {
+            document.getElementById('edit-team-id').value = teamId;
+            document.getElementById('edit-team-name-input').value = currentTeams[teamId].name;
+            document.getElementById('edit-team-pwd-input').value = currentTeams[teamId].password;
+            document.getElementById('edit-team-modal').style.display = 'block';
+        };
+        document.getElementById('save-team-edits-btn').onclick = async () => {
+            const teamId = document.getElementById('edit-team-id').value;
+            await updateDoc(getDocPath('teams', teamId), { name: document.getElementById('edit-team-name-input').value, password: document.getElementById('edit-team-pwd-input').value });
+            document.getElementById('edit-team-modal').style.display = 'none';
+        };
+
+        window.deleteTeam = async (teamId) => {
+            discordConfirm("Hapus Tim", `Hapus tim **${currentTeams[teamId].name}** beserta semua data tabelnya permanen?`, async () => {
+                const snap = await getDocs(getCollectionPath(`teams/${teamId}/rows`));
+                const promises = []; snap.forEach(r => promises.push(deleteDoc(r.ref)));
+                await Promise.all(promises);
+                await deleteDoc(getDocPath('teams', teamId));
+            });
+        };
+
+        document.getElementById('save-title-btn').onclick = async () => {
+            const val = document.getElementById('edit-title-input').value.trim();
+            if(val) await updateDoc(getDocPath('config', 'settings'), { title: val });
+        };
+        document.getElementById('save-admin-pwd-btn').onclick = async () => {
+            const val = document.getElementById('new-admin-pwd-input').value.trim();
+            if(val.length < 4) return discordAlert("Password min 4 karakter.");
+            discordConfirm("Update Password", "Ganti password Super Admin?", async () => {
+                await updateDoc(getDocPath('config', 'settings'), { superAdminPwd: val });
+                document.getElementById('new-admin-pwd-input').value = '';
+                discordAlert("Password diubah.");
+            });
+        };
+
+        // --- AUTH LOGIC ---
+        document.getElementById('login-btn').onclick = () => {
+            document.getElementById('login-password').value = '';
+            document.getElementById('login-error').style.display = 'none';
+            document.getElementById('login-modal').style.display = 'block';
+        };
+        document.getElementById('login-password').onkeypress = (e) => { if(e.key === 'Enter') document.getElementById('submit-login').click(); };
+        
+        document.querySelectorAll('.close-modal').forEach(btn => btn.onclick = function() { 
+            const m = this.closest('.modal'); if(m) { m.style.display = 'none'; if(m.id==='full-table-modal') closeTeamModal(); }
+        });
+
+        document.getElementById('submit-login').onclick = () => {
+            const pwd = document.getElementById('login-password').value;
+            const err = document.getElementById('login-error');
+            if (pwd === realSuperAdminPwd) {
+                currentUserRole = 'superadmin'; handleLoginSuccess("Super Admin");
+            } else {
+                let foundTeamId = null, foundTeamName = null;
+                for (const [id, team] of Object.entries(currentTeams)) {
+                    if(team.password === pwd) { foundTeamId = id; foundTeamName = team.name; break; }
+                }
+                if (foundTeamId) { currentUserRole = foundTeamId; handleLoginSuccess(`Sub Admin: ${foundTeamName}`); } 
+                else err.style.display = 'block';
+            }
+        };
+
+        function handleLoginSuccess(roleText) {
+            document.getElementById('login-modal').style.display = "none";
+            document.getElementById('login-btn').style.display = "none";
+            document.getElementById('user-info').style.display = "flex";
+            const rd = document.getElementById('role-display'); rd.innerText = roleText;
+            if (currentUserRole === 'superadmin') {
+                document.getElementById('super-admin-controls').style.display = "block";
+                rd.className = "font-semibold text-sm text-[#23a559]";
+                renderSuperAdminTeamList();
+            } else {
+                document.getElementById('super-admin-controls').style.display = "none";
+                rd.className = "font-semibold text-sm text-[#f0b232]";
+            }
+            renderHomeGrid(); 
+        }
+
+        function handleLogout() {
+            currentUserRole = 'viewer';
+            document.getElementById('login-btn').style.display = "block";
+            document.getElementById('user-info').style.display = "none";
+            document.getElementById('super-admin-controls').style.display = "none";
+            renderHomeGrid();
+            closeTeamModal();
+        }
+
+        function escapeHtml(unsafe) { return (unsafe||'').toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
+        window.addEventListener('DOMContentLoaded', initFirebase);
+    </script>
+</body>
+</html>
