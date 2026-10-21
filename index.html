@@ -90,7 +90,7 @@
                 box-shadow:2px 0 0 #1e1f22;
             }
             .mobile-today-col {
-                display:table-cell !important;
+                display:none !important;
                 position:sticky !important;
                 left:150px !important;
                 z-index:24 !important;
@@ -121,6 +121,34 @@
             .team-list-head > div:nth-child(n+3) { display:none; }
             .team-list-row { grid-template-columns:1fr 100px; }
             .team-list-row > div:nth-child(n+3) { display:none; }
+        }
+
+        /* Home dashboard: compact full calendar previews */
+        .home-team-card { background:linear-gradient(145deg,#2b2d31,#232428); border:1px solid #3f4147; border-radius:14px; overflow:hidden; margin:14px 0; box-shadow:0 8px 24px rgba(0,0,0,.16); }
+        .home-team-card-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; background:linear-gradient(110deg,#292b35,#202127); border-bottom:1px solid #3f4147; }
+        .home-mini-scroll { overflow-x:auto; max-width:100%; }
+        .home-mini-table { border-collapse:collapse; width:max-content; min-width:100%; font-size:9px; }
+        .home-mini-table th,.home-mini-table td { padding:5px 6px; text-align:center; border-bottom:1px solid #383a40; white-space:nowrap; }
+        .home-mini-table th { position:static; background:#1e1f22; color:#b5bac1; font-size:8px; }
+        .home-mini-table .mini-name { text-align:left; min-width:110px; max-width:150px; overflow:hidden; text-overflow:ellipsis; }
+        .home-mini-table .mini-today { background:rgba(88,101,242,.18); }
+        .home-mini-table .mini-check { color:#23a559; font-weight:900; }
+        .home-capture-btn { border:1px solid #4b56d2; background:#5865F2; color:white; border-radius:8px; padding:8px 11px; font-size:11px; font-weight:700; white-space:nowrap; }
+        .home-capture-btn:hover { background:#4752C4; }
+        .home-open-hint { color:#87898c; font-size:10px; }
+        #mobile-check-float { display:none; }
+        @media (max-width:640px) {
+            .container { padding-left:10px !important; padding-right:10px !important; }
+            header { padding:12px !important; }
+            #main-title { font-size:15px !important; }
+            .home-team-card-head { padding:11px 12px; }
+            .home-mini-table { font-size:8px; }
+            .home-mini-table th,.home-mini-table td { padding:4px 5px; }
+            #mobile-check-float { position:fixed; display:none; left:12px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom)); z-index:80; padding:11px 12px; border:1px solid #555ee8; border-radius:14px; background:rgba(30,31,34,.96); box-shadow:0 12px 36px rgba(0,0,0,.5); backdrop-filter:blur(12px); align-items:center; justify-content:space-between; gap:12px; }
+            #mobile-check-float.visible { display:flex; }
+            #mobile-check-label { min-width:0; font-size:12px; color:#f2f3f5; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+            #mobile-check-button { flex-shrink:0; border-radius:10px; padding:10px 13px; font-size:12px; font-weight:800; background:#5865F2; color:white; }
+            #mobile-check-button.checked { background:#23a559; }
         }
 
         /* Modals */
@@ -226,7 +254,7 @@
                 <div class="text-[#b5bac1] font-medium tracking-wide animate-pulse">CONNECTING...</div>
             </div>
             <!-- Calendar / Team List -->
-            <div id="team-cards-grid" class="hidden bg-[#2b2d31] border border-[#1e1f22] rounded-lg overflow-hidden">
+            <div id="team-cards-grid" class="hidden">
             </div>
         </main>
     </div>
@@ -324,6 +352,11 @@
         </div>
     </div>
 
+    <div id="mobile-check-float" aria-live="polite">
+        <div class="min-w-0"><div class="text-[9px] uppercase tracking-wider text-[#87898c]">Checklist hari ini</div><div id="mobile-check-label">Pilih baris tabel</div></div>
+        <button id="mobile-check-button" type="button">✓ Checklist</button>
+    </div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
@@ -350,6 +383,9 @@
         let activeTeamId = null;
         let activePeriod = ""; 
         let activeRowsUnsubscribe = null;
+        let activeRowsCache = [];
+        let selectedMobileRowId = null;
+        let modalHistoryOpen = false;
 
         // Custom Dialogs
         function showDialog(title, msg, isConfirm = false, onConfirm = null) {
@@ -470,54 +506,121 @@
         }
 
         // --- HOME CALENDAR / TEAM LIST VIEW ---
-        function renderHomeGrid() {
+        async function renderHomeGrid() {
             const grid = document.getElementById('team-cards-grid');
             grid.innerHTML = '';
 
             const teamIds = Object.keys(currentTeams)
                 .sort((a,b) => (currentTeams[a].createdAt || 0) - (currentTeams[b].createdAt || 0))
-                .filter(teamId => {
-                    if (currentUserRole === 'viewer' || currentUserRole === 'superadmin') return true;
-                    return currentUserRole === teamId;
-                });
+                .filter(teamId => currentUserRole === 'viewer' || currentUserRole === 'superadmin' || currentUserRole === teamId);
 
             if (teamIds.length === 0) {
-                grid.innerHTML = `<div class="text-center text-[#b5bac1] py-10">Belum ada tim.</div>`;
+                grid.innerHTML = `<div class="text-center text-[#b5bac1] py-10 bg-[#2b2d31] rounded-xl">Belum ada tim.</div>`;
                 return;
             }
 
-            const today = new Date();
             const period = getRealtimePeriod();
-            const day = today.getDate();
-
-            const head = document.createElement('div');
-            head.className = 'team-list-head';
-            head.innerHTML = `
-                <div>Kelompok / Cluster</div>
-                <div>PIC AE</div>
-                <div>Periode</div>
-                <div class="text-right">Aksi</div>`;
-            grid.appendChild(head);
-
-            teamIds.forEach(teamId => {
+            const day = new Date().getDate();
+            for (const teamId of teamIds) {
                 const team = currentTeams[teamId];
-                const row = document.createElement('div');
-                row.className = 'team-list-row';
-                row.onclick = () => openTeamModal(teamId);
-                row.innerHTML = `
-                    <div class="min-w-0">
-                        <div class="font-bold text-[#f2f3f5] truncate">${escapeHtml(team.name)}</div>
-                        <div class="text-[11px] text-[#87898c] mt-0.5">Kalender kunjungan</div>
+                const card = document.createElement('section');
+                card.className = 'home-team-card';
+                card.innerHTML = `
+                    <div class="home-team-card-head">
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2"><span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[#5865F2] text-white"><i class="fas fa-users"></i></span><h3 class="font-bold text-[#f2f3f5] text-sm sm:text-base truncate">${escapeHtml(team.name)}</h3></div>
+                            <div class="home-open-hint mt-1 ml-10">${formatPeriodString(period)} · tanggal berjalan ${day} · tekan tabel untuk membuka versi lengkap</div>
+                        </div>
+                        <button class="home-capture-btn" type="button" data-capture-team="${escapeHtml(teamId)}"><i class="fas fa-camera mr-1"></i> Capture</button>
                     </div>
-                    <div class="text-sm text-[#dbdee1]">Buka kalender</div>
-                    <div class="text-xs text-[#b5bac1]">${formatPeriodString(period)} · Tgl ${day}</div>
-                    <div class="text-right">
-                        <span class="inline-flex items-center gap-1 bg-[#5865F2] text-white px-3 py-1.5 rounded text-xs font-bold">
-                            <i class="fas fa-calendar-alt"></i> Buka
-                        </span>
-                    </div>`;
-                grid.appendChild(row);
-            });
+                    <div class="home-mini-scroll" data-mini-scroll="${escapeHtml(teamId)}"><div class="p-5 text-xs text-[#87898c]">Memuat preview tabel...</div></div>`;
+                card.addEventListener('click', (e) => {
+                    if (e.target.closest('[data-capture-team]')) return;
+                    openTeamModal(teamId);
+                });
+                card.querySelector('[data-capture-team]').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    captureHomeTeam(teamId, card);
+                });
+                grid.appendChild(card);
+                try {
+                    const snap = await getDocs(getCollectionPath(`teams/${teamId}/rows`));
+                    const rows = [];
+                    snap.forEach(d => rows.push({id:d.id, ...d.data()}));
+                    rows.sort((a,b) => (a.createdAt || 0) - (b.createdAt || 0));
+                    const scroll = card.querySelector('[data-mini-scroll]');
+                    const table = document.createElement('table');
+                    table.className = 'home-mini-table';
+                    let html = '<thead><tr><th class="mini-name">CLUSTER / PIC</th>';
+                    for (let i=1;i<=31;i++) html += `<th class="${i===day?'mini-today':''}">${i===day?'● ':''}${i}</th>`;
+                    html += '<th>TOTAL</th></tr></thead><tbody>';
+                    if (!rows.length) html += '<tr><td colspan="33" class="text-[#87898c] py-5">Belum ada data untuk tim ini.</td></tr>';
+                    rows.forEach(row => {
+                        let dates = row[`dates_${period}`];
+                        if (dates == null) dates = row.dates || {};
+                        if (!dates || typeof dates !== 'object') dates = {};
+                        let total=0;
+                        html += `<tr><td class="mini-name"><div class="font-semibold text-[#f2f3f5]">${escapeHtml(row.clusterName || '-')}</div><div class="text-[#87898c]">${escapeHtml(row.picAe || '-')}</div></td>`;
+                        for (let i=1;i<=31;i++) {
+                            const checked=!!dates[i]; if(checked) total++;
+                            html += `<td class="${i===day?'mini-today':''} ${checked?'mini-check':''}">${checked?'✓':''}</td>`;
+                        }
+                        html += `<td class="font-bold text-[#f2f3f5]">${total}</td></tr>`;
+                    });
+                    html += '</tbody>';
+                    table.innerHTML = html;
+                    scroll.innerHTML = '';
+                    scroll.appendChild(table);
+                    // Clicking the preview itself opens the normal, large interactive table.
+                    scroll.style.cursor = 'pointer';
+                    scroll.title = 'Tekan untuk membuka tabel lengkap';
+                } catch (err) {
+                    console.error('Gagal memuat preview tim', teamId, err);
+                    card.querySelector('[data-mini-scroll]').innerHTML = '<div class="p-4 text-xs text-[#da373c]">Preview gagal dimuat. Periksa izin Firestore.</div>';
+                }
+            }
+        }
+
+        async function captureHomeTeam(teamId, card) {
+            const btn = card.querySelector('[data-capture-team]');
+            const miniScroll = card.querySelector('.home-mini-scroll');
+            const table = card.querySelector('.home-mini-table');
+            const oldText = btn.innerHTML;
+            const oldStyles = {
+                cardWidth: card.style.width, cardMaxWidth: card.style.maxWidth,
+                overflow: card.style.overflow, scrollOverflow: miniScroll.style.overflow,
+                scrollWidth: miniScroll.style.width, scrollMaxWidth: miniScroll.style.maxWidth,
+                tableWidth: table ? table.style.width : ''
+            };
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Capture...';
+            try {
+                // Saat capture, bentangkan seluruh 31 tanggal supaya tidak hanya bagian yang terlihat di layar.
+                card.style.width = 'max-content';
+                card.style.maxWidth = 'none';
+                card.style.overflow = 'visible';
+                miniScroll.style.overflow = 'visible';
+                miniScroll.style.width = 'max-content';
+                miniScroll.style.maxWidth = 'none';
+                if (table) table.style.width = 'max-content';
+                await new Promise(resolve => setTimeout(resolve, 80));
+                const canvas = await html2canvas(card, {backgroundColor:'#232428', scale:2, logging:false, useCORS:true, windowWidth:Math.max(document.documentElement.clientWidth, card.scrollWidth)});
+                const link = document.createElement('a');
+                link.download = `MarkIn_${(currentTeams[teamId]?.name || 'Team').replace(/[^a-z0-9_-]/gi,'_')}_preview_${getRealtimePeriod()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            } catch (err) {
+                console.error(err);
+                discordAlert('Gagal men-capture preview tim.');
+            } finally {
+                card.style.width = oldStyles.cardWidth;
+                card.style.maxWidth = oldStyles.cardMaxWidth;
+                card.style.overflow = oldStyles.overflow;
+                miniScroll.style.overflow = oldStyles.scrollOverflow;
+                miniScroll.style.width = oldStyles.scrollWidth;
+                miniScroll.style.maxWidth = oldStyles.scrollMaxWidth;
+                if (table) table.style.width = oldStyles.tableWidth;
+                btn.innerHTML = oldText;
+            }
         }
 
         // --- FULL TABLE MODAL LOGIC ---
@@ -536,17 +639,56 @@
 
             document.getElementById('active-table').classList.remove('hide-details'); // Reset info toggle
             document.getElementById('full-table-modal').style.display = 'block';
+            selectedMobileRowId = null;
+            hideMobileChecklist();
+            if (!modalHistoryOpen) { history.pushState({teamModal:true}, ''); modalHistoryOpen = true; }
             loadActiveTable();
         };
 
-        function closeTeamModal() {
+        function closeTeamModal(fromPopState = false) {
             document.getElementById('full-table-modal').style.display = 'none';
             activeTeamId = null;
+            hideMobileChecklist();
             if(activeRowsUnsubscribe) {
                 activeRowsUnsubscribe();
                 activeRowsUnsubscribe = null;
             }
+            if (modalHistoryOpen) {
+                modalHistoryOpen = false;
+                if (!fromPopState) history.back();
+            }
         }
+
+        window.addEventListener('popstate', () => {
+            const modal = document.getElementById('full-table-modal');
+            if (modal.style.display === 'block') closeTeamModal(true);
+            else if (document.getElementById('login-modal').style.display === 'block') document.getElementById('login-modal').style.display = 'none';
+        });
+
+        function hideMobileChecklist() {
+            const el = document.getElementById('mobile-check-float');
+            if (el) el.classList.remove('visible');
+            selectedMobileRowId = null;
+        }
+
+        function updateMobileChecklist() {
+            const popup = document.getElementById('mobile-check-float');
+            const label = document.getElementById('mobile-check-label');
+            const button = document.getElementById('mobile-check-button');
+            if (!popup || !activeTeamId || !selectedMobileRowId || window.innerWidth > 640) { if(popup) popup.classList.remove('visible'); return; }
+            const row = activeRowsCache.find(r => r.id === selectedMobileRowId);
+            if (!row || activePeriod !== getRealtimePeriod()) { popup.classList.remove('visible'); return; }
+            const dates = row[`dates_${activePeriod}`] || row.dates || {};
+            const checked = !!dates[new Date().getDate()];
+            label.textContent = row.clusterName || 'Checklist hari ini';
+            button.textContent = checked ? '✓ Sudah checklist' : '+ Checklist';
+            button.classList.toggle('checked', checked);
+            popup.classList.add('visible');
+            button.onclick = () => toggleCheck(row.id, new Date().getDate(), !checked);
+        }
+
+        document.getElementById('mobile-check-button').addEventListener('click', () => updateMobileChecklist());
+        window.addEventListener('resize', updateMobileChecklist);
 
         function generateActiveHeader() {
             const d = new Date();
@@ -602,6 +744,7 @@
         }
 
         function renderActiveTbody(rowsData) {
+            activeRowsCache = Array.isArray(rowsData) ? rowsData : [];
             const tbody = document.getElementById('active-tbody');
             tbody.innerHTML = '';
 
@@ -619,6 +762,13 @@
             rowsData.forEach(row => {
                 const tr = document.createElement('tr');
                 tr.className = 'group';
+                tr.dataset.rowId = row.id;
+                tr.addEventListener('click', (event) => {
+                    if (window.innerWidth <= 640 && !event.target.closest('button')) {
+                        selectedMobileRowId = row.id;
+                        updateMobileChecklist();
+                    }
+                });
 
                 // Ambil data tanggal lebih dulu sebelum dipakai di kolom Update mobile.
                 const periodDataKey = `dates_${activePeriod}`;
@@ -679,6 +829,7 @@
                 tr.innerHTML = html;
                 tbody.appendChild(tr);
             });
+            updateMobileChecklist();
         }
 
         window.toggleCheck = async (rowId, dayIndex, newValue) => {
