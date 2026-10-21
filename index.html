@@ -549,6 +549,10 @@
         }
 
         function generateActiveHeader() {
+            const d = new Date();
+            const isViewingCurrentRealMonth = activePeriod === getRealtimePeriod();
+            const currentDay = d.getDate();
+
             let html = '<tr>';
             html += '<th class="text-left-col detail-col sticky left-0 z-20 shadow-[1px_0_0_#1e1f22] mobile-sticky-name">Cluster Name</th>';
             html += `<th class="mobile-today-col ${isViewingCurrentRealMonth ? 'current-date-header' : ''}">
@@ -556,17 +560,16 @@
                         <span class="mobile-today-number">${isViewingCurrentRealMonth ? currentDay : '-'}</span>
                      </th>`;
             html += '<th class="text-left-col detail-col pic-col">PIC AE</th>';
-            
-            const d = new Date();
-            const isViewingCurrentRealMonth = activePeriod === getRealtimePeriod();
-            const currentDay = d.getDate();
-            
+
             for (let i = 1; i <= 31; i++) {
                 const bgClass = (isViewingCurrentRealMonth && i === currentDay) ? 'current-date-header' : '';
                 html += `<th class="${bgClass}">${i}</th>`;
             }
+
             html += '<th class="text-white">Total</th>';
-            if (currentUserRole === 'superadmin') html += '<th><i class="fas fa-cog"></i></th>';
+            if (currentUserRole === 'superadmin') {
+                html += '<th><i class="fas fa-cog"></i></th>';
+            }
             html += '</tr>';
             return html;
         }
@@ -579,24 +582,35 @@
             const tbody = document.getElementById('active-tbody');
             tbody.innerHTML = '<tr><td colspan="34" class="py-10 text-[#87898c] animate-pulse">Loading data...</td></tr>';
 
-            activeRowsUnsubscribe = onSnapshot(getCollectionPath(`teams/${activeTeamId}/rows`), (snapshot) => {
-                const rowsData = [];
-                snapshot.forEach(doc => rowsData.push({ id: doc.id, ...doc.data() }));
-                rowsData.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-                renderActiveTbody(rowsData);
-            });
+            activeRowsUnsubscribe = onSnapshot(
+                getCollectionPath(`teams/${activeTeamId}/rows`),
+                (snapshot) => {
+                    const rowsData = [];
+                    snapshot.forEach(doc => rowsData.push({ id: doc.id, ...doc.data() }));
+                    rowsData.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+                    renderActiveTbody(rowsData);
+                },
+                (error) => {
+                    console.error('Gagal memuat data tabel:', error);
+                    const message = error?.code === 'permission-denied'
+                        ? 'Akses ditolak oleh Firestore. Periksa Firestore Security Rules.'
+                        : 'Gagal memuat data. Periksa koneksi internet dan konfigurasi Firebase.';
+                    document.getElementById('active-tbody').innerHTML =
+                        `<tr><td colspan="36" class="text-[#da373c] py-10">${message}</td></tr>`;
+                }
+            );
         }
 
         function renderActiveTbody(rowsData) {
             const tbody = document.getElementById('active-tbody');
             tbody.innerHTML = '';
-            
+
             const isSuperAdmin = currentUserRole === 'superadmin';
             const isSubAdmin = currentUserRole === activeTeamId;
             const isViewingCurrentRealMonth = activePeriod === getRealtimePeriod();
             const currentDay = new Date().getDate();
 
-            if (rowsData.length === 0) {
+            if (!Array.isArray(rowsData) || rowsData.length === 0) {
                 const cols = 3 + 31 + 1 + (isSuperAdmin ? 1 : 0);
                 tbody.innerHTML = `<tr><td colspan="${cols}" class="text-[#87898c] py-10 italic">Data kosong.</td></tr>`;
                 return;
@@ -604,24 +618,32 @@
 
             rowsData.forEach(row => {
                 const tr = document.createElement('tr');
-                tr.className = "group";
-                let html = '';
+                tr.className = 'group';
 
-                // Text Cells
-                html += `<td class="text-left-col detail-col text-[#f2f3f5] font-medium sticky left-0 z-10 bg-[#2b2d31] group-hover:bg-[#35373c] shadow-[1px_0_0_#1e1f22] mobile-sticky-name ${isSuperAdmin ? 'editable-cell' : ''}" 
+                // Ambil data tanggal lebih dulu sebelum dipakai di kolom Update mobile.
+                const periodDataKey = `dates_${activePeriod}`;
+                let rowDates = row[periodDataKey];
+                if (rowDates == null && isViewingCurrentRealMonth && row.dates != null) {
+                    rowDates = row.dates; // Kompatibilitas dengan data versi lama.
+                }
+                if (rowDates == null || typeof rowDates !== 'object') {
+                    rowDates = {};
+                }
+
+                let html = '';
+                html += `<td class="text-left-col detail-col text-[#f2f3f5] font-medium sticky left-0 z-10 bg-[#2b2d31] group-hover:bg-[#35373c] shadow-[1px_0_0_#1e1f22] mobile-sticky-name ${isSuperAdmin ? 'editable-cell' : ''}"
                              ${isSuperAdmin ? `onclick="editCellText('${activeTeamId}', '${row.id}', 'clusterName', this)"` : ''}>
                              ${escapeHtml(row.clusterName || '-')}
                          </td>`;
 
-                // Mobile-only quick checkbox: today's date stays beside the cluster name.
-                const todayChecked = (isViewingCurrentRealMonth && rowDates[currentDay]) ? true : false;
+                const todayChecked = isViewingCurrentRealMonth && !!rowDates[currentDay];
                 if (isViewingCurrentRealMonth) {
                     const todayMark = todayChecked ? '<i class="fas fa-check"></i>' : '<span class="text-[#87898c]">○</span>';
                     html += `<td class="mobile-today-col ${todayChecked ? 'checked-cell' : ''}" onclick="event.stopPropagation(); ${isSubAdmin ? `toggleCheck('${row.id}', ${currentDay}, ${!todayChecked})` : ''}">
                                 ${todayMark}
                              </td>`;
                 } else {
-                    html += `<td class="mobile-today-col"><span class="text-[#87898c]">-</span></td>`;
+                    html += '<td class="mobile-today-col"><span class="text-[#87898c]">-</span></td>';
                 }
 
                 html += `<td class="text-left-col detail-col pic-col text-[#dbdee1] ${isSuperAdmin ? 'editable-cell' : ''}"
@@ -630,26 +652,14 @@
                          </td>`;
 
                 let totalChecks = 0;
-                
-                // Historical Data Fallback Logic:
-                // Jika periode saat ini adalah bulan aplikasi dibuat dan belum ada 'dates_YYYY_MM', ambil dari 'dates' lama
-                const periodDataKey = `dates_${activePeriod}`;
-                let rowDates = row[periodDataKey];
-                if(rowDates === undefined && isViewingCurrentRealMonth && row.dates) {
-                    rowDates = row.dates; // Backward compatibility with previous app version data
-                } else if(rowDates === undefined) {
-                    rowDates = {}; // Empty month
-                }
-
-                // Dates 1-31
                 for (let i = 1; i <= 31; i++) {
-                    const isChecked = rowDates[i];
+                    const isChecked = !!rowDates[i];
                     if (isChecked) totalChecks++;
-                    
+
                     const bgClass = (isViewingCurrentRealMonth && i === currentDay) ? 'current-date-col' : '';
                     const checkMark = isChecked ? '<i class="fas fa-check"></i>' : '';
                     const cellClass = `date-col ${bgClass} ${isChecked ? 'checked-cell' : ''}`;
-                    
+
                     if (isSubAdmin) {
                         html += `<td class="${cellClass}" onclick="toggleCheck('${row.id}', ${i}, ${!isChecked})">${checkMark}</td>`;
                     } else {
@@ -658,10 +668,11 @@
                 }
 
                 html += `<td class="font-bold text-[#f2f3f5] bg-[#1e1f22] bg-opacity-40">${totalChecks}</td>`;
-
                 if (isSuperAdmin) {
                     html += `<td>
-                                <button onclick="deleteRow('${activeTeamId}', '${row.id}')" class="text-[#87898c] hover:text-[#da373c] p-1 transition opacity-0 group-hover:opacity-100 focus:opacity-100"><i class="fas fa-trash"></i></button>
+                                <button onclick="deleteRow('${activeTeamId}', '${row.id}')" class="text-[#87898c] hover:text-[#da373c] p-1 transition opacity-0 group-hover:opacity-100 focus:opacity-100">
+                                    <i class="fas fa-trash"></i>
+                                </button>
                              </td>`;
                 }
 
