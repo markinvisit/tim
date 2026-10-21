@@ -90,7 +90,7 @@
                 box-shadow:2px 0 0 #1e1f22;
             }
             .mobile-today-col {
-                display:none !important;
+                display:table-cell !important;
                 position:sticky !important;
                 left:150px !important;
                 z-index:24 !important;
@@ -136,7 +136,6 @@
         .home-capture-btn { border:1px solid #4b56d2; background:#5865F2; color:white; border-radius:8px; padding:8px 11px; font-size:11px; font-weight:700; white-space:nowrap; }
         .home-capture-btn:hover { background:#4752C4; }
         .home-open-hint { color:#87898c; font-size:10px; }
-        #mobile-check-float { display:none; }
         @media (max-width:640px) {
             .container { padding-left:10px !important; padding-right:10px !important; }
             header { padding:12px !important; }
@@ -144,11 +143,6 @@
             .home-team-card-head { padding:11px 12px; }
             .home-mini-table { font-size:8px; }
             .home-mini-table th,.home-mini-table td { padding:4px 5px; }
-            #mobile-check-float { position:fixed; display:none; left:12px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom)); z-index:80; padding:11px 12px; border:1px solid #555ee8; border-radius:14px; background:rgba(30,31,34,.96); box-shadow:0 12px 36px rgba(0,0,0,.5); backdrop-filter:blur(12px); align-items:center; justify-content:space-between; gap:12px; }
-            #mobile-check-float.visible { display:flex; }
-            #mobile-check-label { min-width:0; font-size:12px; color:#f2f3f5; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-            #mobile-check-button { flex-shrink:0; border-radius:10px; padding:10px 13px; font-size:12px; font-weight:800; background:#5865F2; color:white; }
-            #mobile-check-button.checked { background:#23a559; }
         }
 
         /* Modals */
@@ -352,11 +346,6 @@
         </div>
     </div>
 
-    <div id="mobile-check-float" aria-live="polite">
-        <div class="min-w-0"><div class="text-[9px] uppercase tracking-wider text-[#87898c]">Checklist hari ini</div><div id="mobile-check-label">Pilih baris tabel</div></div>
-        <button id="mobile-check-button" type="button">✓ Checklist</button>
-    </div>
-
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
@@ -384,7 +373,6 @@
         let activePeriod = ""; 
         let activeRowsUnsubscribe = null;
         let activeRowsCache = [];
-        let selectedMobileRowId = null;
         let modalHistoryOpen = false;
 
         // Custom Dialogs
@@ -639,8 +627,6 @@
 
             document.getElementById('active-table').classList.remove('hide-details'); // Reset info toggle
             document.getElementById('full-table-modal').style.display = 'block';
-            selectedMobileRowId = null;
-            hideMobileChecklist();
             if (!modalHistoryOpen) { history.pushState({teamModal:true}, ''); modalHistoryOpen = true; }
             loadActiveTable();
         };
@@ -648,7 +634,6 @@
         function closeTeamModal(fromPopState = false) {
             document.getElementById('full-table-modal').style.display = 'none';
             activeTeamId = null;
-            hideMobileChecklist();
             if(activeRowsUnsubscribe) {
                 activeRowsUnsubscribe();
                 activeRowsUnsubscribe = null;
@@ -664,31 +649,6 @@
             if (modal.style.display === 'block') closeTeamModal(true);
             else if (document.getElementById('login-modal').style.display === 'block') document.getElementById('login-modal').style.display = 'none';
         });
-
-        function hideMobileChecklist() {
-            const el = document.getElementById('mobile-check-float');
-            if (el) el.classList.remove('visible');
-            selectedMobileRowId = null;
-        }
-
-        function updateMobileChecklist() {
-            const popup = document.getElementById('mobile-check-float');
-            const label = document.getElementById('mobile-check-label');
-            const button = document.getElementById('mobile-check-button');
-            if (!popup || !activeTeamId || !selectedMobileRowId || window.innerWidth > 640) { if(popup) popup.classList.remove('visible'); return; }
-            const row = activeRowsCache.find(r => r.id === selectedMobileRowId);
-            if (!row || activePeriod !== getRealtimePeriod()) { popup.classList.remove('visible'); return; }
-            const dates = row[`dates_${activePeriod}`] || row.dates || {};
-            const checked = !!dates[new Date().getDate()];
-            label.textContent = row.clusterName || 'Checklist hari ini';
-            button.textContent = checked ? '✓ Sudah checklist' : '+ Checklist';
-            button.classList.toggle('checked', checked);
-            popup.classList.add('visible');
-            button.onclick = () => toggleCheck(row.id, new Date().getDate(), !checked);
-        }
-
-        document.getElementById('mobile-check-button').addEventListener('click', () => updateMobileChecklist());
-        window.addEventListener('resize', updateMobileChecklist);
 
         function generateActiveHeader() {
             const d = new Date();
@@ -763,13 +723,6 @@
                 const tr = document.createElement('tr');
                 tr.className = 'group';
                 tr.dataset.rowId = row.id;
-                tr.addEventListener('click', (event) => {
-                    if (window.innerWidth <= 640 && !event.target.closest('button')) {
-                        selectedMobileRowId = row.id;
-                        updateMobileChecklist();
-                    }
-                });
-
                 // Ambil data tanggal lebih dulu sebelum dipakai di kolom Update mobile.
                 const periodDataKey = `dates_${activePeriod}`;
                 let rowDates = row[periodDataKey];
@@ -829,7 +782,6 @@
                 tr.innerHTML = html;
                 tbody.appendChild(tr);
             });
-            updateMobileChecklist();
         }
 
         window.toggleCheck = async (rowId, dayIndex, newValue) => {
